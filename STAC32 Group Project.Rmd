@@ -1,0 +1,206 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(MASS)
+library(tidyverse)
+library(broom)
+library(leaps)
+```
+
+
+# 0. Read the datasets
+```{r}
+breed_traits <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-02-01/breed_traits.csv')
+breed_traits
+```
+
+As the origin breed_traits table has column names with space between each word, which makes it difficult to call in R, `make.names()` makes syntactically valid names out of character vectors (Source: https://stackoverflow.com/questions/10688137/how-to-fix-spaces-in-column-names-of-a-data-frame-remove-spaces-inject-dots). 
+```{r}
+names(breed_traits)<-make.names(names(breed_traits),unique = TRUE)
+breed_traits
+```
+As we navigate through each trait, we came across the question that whether some traits can affect another. Thus, we roughly divided the traits into 3 categories:
+
+1. Affection level: Affectionate With Family, Good With Young Children, Good With Other Dogs
+2. Appearance: Shedding Level, Coat Grooming Frequency, Drooling Level, Coat Type, Coat Length
+3. Personality: Openness To Strangers, Playfulness Level, Watchdog/Protective Nature, Adaptability Level, Trainability Level, Energy Level, Barking Level, Mental Stimulation Needs
+
+In this section, we are focusing on whether breeds' personality can affect their affection level. Specifically, we look at whether personality can affect their affection level with family and young children.
+
+# 1. Affectionate With Family vs. Personality Traits
+
+## Plotting response "Affectionate.With.Family" against every personality traits
+```{r}
+breed_traits %>%
+  pivot_longer(Openness.To.Strangers:Mental.Stimulation.Needs,
+               names_to="xname", values_to="x", values_drop_na = T) %>%
+  ggplot(aes(x = x, y = Affectionate.With.Family)) + geom_jitter() +
+  facet_wrap(~xname, scales = "free") -> g
+g
+```
+
+## Multiple regression model formula
+```{r}
+a.1 <- lm(Affectionate.With.Family ~ Openness.To.Strangers + Playfulness.Level + Watchdog.Protective.Nature + Adaptability.Level + Trainability.Level + Energy.Level + Barking.Level + Mental.Stimulation.Needs, data=breed_traits)
+glance(a.1)
+tidy(a.1) %>% arrange(p.value)
+```
+
+
+## Residual plot of residuals against fitted values
+```{r}
+ggplot(a.1, aes(x = .fitted, y = .resid)) + geom_point()
+```
+
+## Residual plots of residuals against each explanatory
+```{r}
+a.1 %>% augment(breed_traits) ->a.1a
+a.1a %>%
+pivot_longer(
+Openness.To.Strangers:Mental.Stimulation.Needs,
+names_to="xname", values_to="x"
+) %>%
+ggplot(aes(x = x, y = .resid)) +
+geom_jitter() + facet_wrap(~xname, scales = "free") -> g1
+g1
+```
+Every plot look great enough, suggesting no transformation of y is needed.
+
+
+
+
+## Taking out variables one by one
+```{r}
+tidy(a.1) %>% arrange(p.value)
+a.2 <- update(a.1, .~. -Trainability.Level)
+tidy(a.2) %>% arrange(p.value)
+a.3 <- update(a.2, .~. -Barking.Level)
+tidy(a.3) %>% arrange(p.value)
+a.4 <- update(a.3, .~. -Playfulness.Level)
+tidy(a.4) %>% arrange(p.value)
+a.5 <- update(a.4, .~. -Energy.Level)
+tidy(a.5) %>% arrange(p.value)
+```
+
+## Revisit the best model
+Check that removing all other variables wasn't too much:
+```{r}
+anova(a.5, a.1)
+```
+𝐻_0: two models equally good; 𝐻_𝑎: bigger model better.
+Null not rejected here; small model as good as the big one, so prefer simpler smaller model a.5.
+
+
+```{r}
+tidy(a.5)
+```
+
+Regression slopes suggest that Affectionate With Family increases as `Openness To Strangers` increases, `Watchdog Protective Nature` increases, `Adaptability Level` increases, and `Mental Stimulation Needs` increases. 
+
+## Check the residual plots for our best model
+```{r}
+augment(a.5, breed_traits) %>%
+pivot_longer(
+Openness.To.Strangers:Mental.Stimulation.Needs,
+names_to="xname", values_to="x",
+) %>%
+ggplot(aes(y = .resid, x = x)) + geom_jitter() +
+facet_wrap(~xname, scales = "free") -> g3
+g3
+```
+None of the plots show any sort of pattern. The points all look random on each plot.
+There is one low outlier (0) for each plot except `Barking Level`. 
+
+
+
+
+# 2. Good With Young Children vs. Personality Traits
+
+## Plotting response "Good.With.Young.Children" against every personality traits
+```{r}
+breed_traits %>%
+  pivot_longer(Openness.To.Strangers:Mental.Stimulation.Needs,
+               names_to="xname", values_to="x", values_drop_na = T) %>%
+  ggplot(aes(x = x, y = Good.With.Young.Children)) + geom_jitter() +
+  facet_wrap(~xname, scales = "free") -> g
+g
+```
+
+## Multiple regression model formula
+```{r}
+b.1 <- lm(Good.With.Young.Children ~ Openness.To.Strangers + Playfulness.Level + Watchdog.Protective.Nature + Adaptability.Level + Trainability.Level + Energy.Level + Barking.Level + Mental.Stimulation.Needs, data=breed_traits)
+glance(b.1)
+tidy(b.1) %>% arrange(p.value)
+```
+
+
+## Residual plot of residuals against fitted values
+```{r}
+ggplot(b.1, aes(x = .fitted, y = .resid)) + geom_point()
+```
+
+## Residual plots of residuals against each explanatory
+```{r}
+b.1 %>% augment(breed_traits) ->b.1a
+b.1a %>%
+pivot_longer(
+Openness.To.Strangers:Mental.Stimulation.Needs,
+names_to="xname", values_to="x"
+) %>%
+ggplot(aes(x = x, y = .resid)) +
+geom_jitter() + facet_wrap(~xname, scales = "free") -> g1
+g1
+```
+Every plot look great enough, suggesting no transformation of y is needed.
+
+
+
+
+## Taking out variables one by one
+```{r}
+tidy(b.1) %>% arrange(p.value)
+b.2 <- update(b.1, .~. -Barking.Level)
+tidy(b.2) %>% arrange(p.value)
+b.3 <- update(b.2, .~. -Energy.Level)
+tidy(b.3) %>% arrange(p.value)
+b.4 <- update(b.3, .~. -Mental.Stimulation.Needs)
+tidy(b.4) %>% arrange(p.value)
+b.5 <- update(b.4, .~. -Trainability.Level)
+tidy(b.5) %>% arrange(p.value)
+b.6 <- update(b.5, .~. -Watchdog.Protective.Nature)
+tidy(b.6) %>% arrange(p.value)
+b.7 <- update(b.6, .~. -Playfulness.Level)
+tidy(b.7) %>% arrange(p.value)
+```
+
+## Revisit the best model
+Check that removing all other variables wasn't too much:
+```{r}
+anova(b.7, b.1)
+```
+𝐻_0: two models equally good; 𝐻_𝑎: bigger model better.
+Null not rejected here; small model as good as the big one, so prefer simpler smaller model a.5.
+
+
+```{r}
+tidy(b.7)
+```
+
+Regression slopes suggest that Good With Young Children increases as `Openness To Strangers` increases, and `Adaptability Level` increases. 
+
+## Check the residual plots for our best model
+```{r}
+augment(b.7, breed_traits) %>%
+pivot_longer(
+Openness.To.Strangers:Mental.Stimulation.Needs,
+names_to="xname", values_to="x",
+) %>%
+ggplot(aes(y = .resid, x = x)) + geom_jitter() +
+facet_wrap(~xname, scales = "free") 
+```
+None of the plots show any sort of pattern. The points all look random on each plot.
+There is one low outlier (0) for each plot. 
+
+
